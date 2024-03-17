@@ -3,6 +3,7 @@ from dotenv import load_dotenv
 from models import TradeRequest, Account, TradeSignal
 import requests
 import math
+import aiohttp
 
 load_dotenv()
 
@@ -16,7 +17,7 @@ class TradingService:
     
     
 
-    def get_predefined_option_lot_size(account: Account, signal: TradeSignal) -> int:
+    def get_predefined_option_lot_size(self, account: Account, signal: TradeSignal) -> int:
         """
         Calculate the lot size for a predefined option based on the account balance and signal symbol.
 
@@ -33,8 +34,8 @@ class TradingService:
         """
         lot_sizes = {
             'banknifty': (15, 25000),  # quantity, perLot 
+            'finnifty': (40, 33000),
             'nifty': (50, 33000),
-            'finnifty': (40, 33000)
         }
 
         demat_balance = account.fund 
@@ -46,41 +47,38 @@ class TradingService:
                 lot_size = math.ceil(calc * quantity) 
                 return lot_size
 
-        if demat_balance < 25000:
-            return 0
-
         lot_size = math.ceil(demat_balance / 25000)
         return lot_size
 
-    def place_order(self, trade_request: TradeRequest):
+    async def place_order(self, trade_request: TradeRequest):
         api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")  
         url = "https://api.stocksdeveloper.in/trading/placeRegularOrder"
         headers = {'api-key': api_key}
 
         try:
-            response = requests.post(url, headers=headers, data=trade_request.model_dump(mode="json")) 
-
-            if response.status_code == 200:
-                api_response = response.json()
-                if api_response.get('status'):
-                    return {
-                        'status': True,
-                        'result': api_response.get('result')
-                    }
-                else:
-                    return {
-                        'status': False,
-                        'message': api_response.get('message', 'API error')
-                    }
-
-            else:
-                return {
-                    'status': False,
-                    'message': f'API request failed with status code: {response.status_code}'
-                }
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, headers=headers, data=trade_request.model_dump(mode="json")) as response:
+                    response.raise_for_status()  # Ensure successful status
+                    api_response = await response.json()
+                    if api_response.get('status'):
+                        return {  # Return details on success
+                            'status': True,
+                            'data': api_response.get('result')
+                        }
+                    else:
+                        return {
+                            'status': False,
+                            'message': api_response.get('message', 'API error')
+                        }
+                
+        except aiohttp.ClientError as e:
+            return {
+                'status': False,
+                'message': f'Cannot connect to API: {str(e)}'
+            }             
 
         except requests.exceptions.RequestException as e:
             return {
                 'status': False,
                 'message': f'Cannot connect to API: {str(e)}'
-            } 
+            }
