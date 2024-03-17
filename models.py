@@ -26,14 +26,6 @@ class TradeSignal(BaseModel):
     price: float  
     type: TradeType
     strategyname: str
-
-    # Pydantic validator similar to Laravel syntax
-    @validator('symbolname') 
-    def symbolname_must_be_valid(cls, value):
-        allowed_symbols = ["finnifty", "nifty", "banknifty"]
-        if not any(symbol in value.lower() for symbol in allowed_symbols):
-            raise ValueError('Invalid symbolname')
-        return value
     
 #sub classes for trade request
 class OrderType(str, Enum):
@@ -42,10 +34,15 @@ class OrderType(str, Enum):
 class ProductType(str, Enum):
     INTRADAY = "INTRADAY"
 
+
+class TradeSignalType(str, Enum):
+    buy = "BUY"
+    sell = "SELL"
+
 class TradeRequest(BaseModel):
     pseudoAccount: str 
     symbol: str  
-    tradeType: SignalType
+    tradeType: TradeSignalType
     orderType: OrderType
     productType: ProductType
     quantity: int 
@@ -57,6 +54,8 @@ class Account(BaseModel):
     pseudoAccountName: str
     fund: float
     accountId: str
+    stoplosstype: str
+    stoploss: float
 
 class AccountListResponse(BaseModel):
     accountslist: List[Account]
