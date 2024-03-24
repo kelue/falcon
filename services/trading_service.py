@@ -50,7 +50,7 @@ class TradingService:
         lot_size = math.ceil(demat_balance / 25000)
         return lot_size
 
-    async def place_order(self, trade_request: TradeRequest):
+    async def place_order(self, trade_request: TradeRequest, account: Account):
         api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")  
         url = "https://api.stocksdeveloper.in/trading/placeRegularOrder"
         headers = {'api-key': api_key}
@@ -63,7 +63,18 @@ class TradingService:
                     if api_response.get('status'):
                         return {  # Return details on success
                             'status': True,
-                            'data': api_response.get('result')
+                            'data': {
+                                'order_id': api_response.get('result'),
+                                'account': account.pseudoAccountName,
+                                'account_id': account.accountId,
+                                'balance': account.fund,
+                                'symbol': trade_request.symbol,
+                                'trade_type': trade_request.tradeType,
+                                'quantity': trade_request.quantity,
+                                'price': trade_request.price,
+                                'stoplosstype': account.stoplosstype,
+                                'stoploss': account.stoploss
+                            }
                         }
                     else:
                         return {
