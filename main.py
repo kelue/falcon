@@ -19,50 +19,77 @@ def get_account_service():
 
 @app.post("/open-trade")
 async def process_trade_signal(signal: TradeSignal):
+    try:
 
-    trading_service = get_trading_service()
-    account_service = get_account_service()
+        trading_service = get_trading_service()
+        account_service = get_account_service()
 
-    accounts: list[Account] = account_service.get_active_accounts()
+        accounts: list[Account] = account_service.get_active_accounts()
 
-    successful_trades = [] 
+        successful_trades = [] 
 
-    if accounts: 
-        if signal.type == TradeType.equity:
-            for account in accounts:
-                lot_size = trading_service.calculate_lot_size(account, signal)
-                trade_request = build_trade_request(account, signal, lot_size)
-                order = trading_service.place_order(trade_request)
-                if order['status']:
-                    successful_trades.append({
-                        'pseudo_account': account.pseudoAccountName,
-                        'falcon_account': account.accountId 
-                    })
-            
+        if accounts: 
+            tasks = []
+            if signal.type == TradeType.equity:
+                async with aiohttp.ClientSession() as session:  # Shared session for efficiency
+                    for account in accounts:
+                        demat_margin = account_service.get_user_demat(account.pseudoAccountName)
+
+                        if demat_margin:
+                            account.fund = demat_margin
+
+                        lot_size = trading_service.calculate_lot_size(account, signal)
+                        trade_request = build_trade_request(account, signal, lot_size)
+                        tasks.append(asyncio.create_task(trading_service.place_order(trade_request)))
+
+                        results = await asyncio.gather(*tasks)  
+                        for result in results:
+                            if result['status']:  # Check if order was successful
+                                successful_trades.append({
+                                    'pseudo_account': result['data']['pseudo_account'],
+                                    'falcon_account': result['data']['falcon_account'],
+                                    'symbol': result['data']['symbol'],
+                                    'buyPrice': result['data']['buyAvgPrice'],
+                                    'sellPrice': result['data']['sellAvgPrice'],
+                                }) 
+                return {
+                    'status': True,
+                    'data': successful_trades
+                }
+
+            elif signal.type == TradeType.option:
+                async with aiohttp.ClientSession() as session:  # Shared session for efficiency
+                    for account in accounts:
+                        if account.fund < 100000:
+                            continue
+                        lot_size = trading_service.get_predefined_option_lot_size(account, signal)
+                        trade_request = build_trade_request(account, signal, lot_size)
+                        tasks.append(asyncio.create_task(trading_service.place_order(trade_request)))
+
+                        results = await asyncio.gather(*tasks)  
+                        for result in results:
+                            if result['status']:  # Check if order was successful
+                                successful_trades.append({
+                                    'pseudo_account': result['data']['pseudo_account'],
+                                    'falcon_account': result['data']['falcon_account'],
+                                    'symbol': result['data']['symbol'],
+                                    'buyPrice': result['data']['buyAvgPrice'],
+                                    'sellPrice': result['data']['sellAvgPrice'],
+                                })
+
+                return {
+                    'status': True,
+                    'data': successful_trades
+                }
+        else:
             return {
-                'status': True,
-                'data': successful_trades
+                'status': False,
+                'data': 'No active accounts found'
             }
-
-        elif signal.type == TradeType.option:
-            for account in accounts:
-                lot_size = trading_service.get_predefined_option_lot_size(account.fund)
-                trade_request = build_trade_request(account, signal, lot_size)
-                order = trading_service.place_order(trade_request)
-                if order['status']:
-                    successful_trades.append({
-                        'pseudo_account': account.pseudoAccountName,
-                        'falcon_account': account.accountId 
-                    })
-
-            return {
-                'status': True,
-                'data': successful_trades
-            }
-    else:
+    except Exception as e:
         return {
-            'status': False,
-            'data': 'No active accounts found'
+            "error": "INTERNAL SERVER ERROR",
+            "message": "server error {}".format(e)
         }
 
 # Helper functions
@@ -78,3 +105,4 @@ def build_trade_request(account: Account, signal: TradeSignal, lot_size: int):
         triggerPrice=0  # You might need conditional logic to set this
     )
     return trade_request 
+
