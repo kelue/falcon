@@ -1,8 +1,7 @@
 import os
 import pyotp
 from dotenv import load_dotenv
-from SmartApi import smartConnect
-
+from SmartApi.smartConnect import SmartConnect
 
 user_data = {}
 
@@ -13,7 +12,7 @@ smartapipass = os.getenv("SMARTAPI_PASS")
 smartapikey = os.getenv("SMARTAPI_KEY")
 
 
-smartApi = smartConnect(smartapikey)
+smartApi = SmartConnect(smartapikey)
 
 
 def login_user():
@@ -27,15 +26,14 @@ def login_user():
 
 
 def refresh_auth():
-    try:
+    if 'refreshToken' in user_data:  # Check for 'refreshToken' key
         rtoken = user_data['refreshToken']
         user = smartApi.generateToken(rtoken)
 
-        if user['data']['jwtToken']:
-            return
-    except KeyError:
-        if user["errorcode"] in ["AB8050", "AB8051", "AB1011"]:
-            login_user()
+        if 'data' in user and 'jwtToken' in user['data']:  # Check for 'data' and 'jwtToken'
+            return 
+    if user.get("errorcode") in ["AB8050", "AB8051", "AB1011"]: 
+        login_user()
         
 
 
@@ -45,15 +43,16 @@ def get_symbol_info(symbol):
 
     searchScripData = smartApi.searchScrip("NSE", symbol)
 
-    if searchScripData['status']:
-        symbols = searchScripData['data']
-
+    if searchScripData.get('status'):  # Safely check 'status'
+        symbols = searchScripData.get('data', [])  # Default to an empty list
         for sym in symbols:
-            if sym['tradingsymbol'] == symbol:
-                return sym['symboltoken']
-            
-    if searchScripData['errorcode'] in ["AG8001", "AG8002", "AG8003"]:
+            if sym.get('tradingsymbol') == symbol: 
+                return sym.get('symboltoken')      
+    if searchScripData.get('errorcode') in ["AG8001", "AG8002", "AG8003"]:
         refresh_auth()
+        get_symbol_info(symbol)
+    if searchScripData.get("errorcode") in ["AB8050", "AB8051", "AB1011"]: 
+        login_user()
         get_symbol_info(symbol)
 
             
@@ -61,18 +60,18 @@ def fetch_price(token):
     mode="LTP"
     exchangeTokens= {
     "NSE": [
-    token
-    ]
+             token
+        ]
     }
     marketData=smartApi.getMarketData(mode, exchangeTokens)
 
-    if marketData['status']:
-        return marketData['data']['fetched'][0]['ltp']
-    
-    elif marketData['errorcode'] in ["AG8001", "AG8002", "AG8003"]:
+    if 'status' in marketData:  # Check for 'status' key first
+        if marketData['status']:
+            if 'data' in marketData and 'fetched' in marketData['data'] and marketData['data']['fetched']:
+                return marketData['data']['fetched'][0]['ltp']  
+    elif 'errorcode' in marketData and marketData['errorcode'] in ["AG8001", "AG8002", "AG8003"]:
         refresh_auth()
         fetch_price(token)
-
-    else:
+    else:  
         login_user()
         fetch_price(token)
