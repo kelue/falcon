@@ -12,7 +12,7 @@
 
 ## Prerequisites
 
-**Python 3.7+**: Ensure you have a compatible Python version installed.
+**Python 3.10+**: Ensure you have a compatible Python version installed.
 
 
 **Trading Platform Integration**: The code uses placeholders for interaction with an actual trading platform. 
