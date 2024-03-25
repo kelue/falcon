@@ -93,3 +93,27 @@ class TradingService:
                 'status': False,
                 'message': f'Cannot connect to API: {str(e)}'
             }
+        
+    def place_rms_order(self, trade_request: TradeRequest):
+        api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")
+        url = "https://api.stocksdeveloper.in/trading/placeRegularOrder"
+        headers = {'api-key': api_key}
+
+        try:
+            response = requests.post(url, headers=headers, data=trade_request.model_dump(mode="json"))
+            response.raise_for_status()  # Ensure successful status
+            api_response = response.json()
+            if api_response.get('status'):
+                return {  # Return details on success
+                    'status': True,
+                }
+            else:
+                return {
+                    'status': False,
+                    'message': api_response.get('message', 'API error')
+                }
+        except requests.exceptions.RequestException as e:
+            return {
+                'status': False,
+                'message': f'Cannot connect to API: {str(e)}'
+            }
