@@ -1,25 +1,25 @@
 
-import os
-from main import get_trading_service
+from typing import List, Dict
 import time
 import json
-from dotenv import load_dotenv
+from models import TradeRequest, OrderType, ProductType
 from utils import get_symbol_info, fetch_price
-
-# load_dotenv()
-# totp_secret = os.getenv("TOTP_SECRET")
-# smartapiuser = os.getenv("SMARTAPI_USER")
-# smartapipass = os.getenv("SMARTAPI_PASS")
-# smartapikey = os.getenv("SMARTAPI_KEY")
+import threading
 
 open_trades = {}  # Dictionary to store open trades
 
-#TODO: write function to expose functionality to add successfult trades to open-trades with symbol as key
+def add_successful_trade(symbol: str, trade_data: List[Dict]):
+    open_trades[symbol] = open_trades.get(symbol, []) + trade_data
+
 
 def monitor_stop_losses():
+    from main import get_trading_service
     trading_service = get_trading_service()
 
     while True:
+        if not open_trades:
+            break
+
         for symbol, trades in open_trades.items():
             current_price = fetch_latest_price(symbol)
 
@@ -29,17 +29,12 @@ def monitor_stop_losses():
             for i in range(len(trades) - 1, -1, -1):  # Iterate backwards for removal
                 trade = trades[i]
                 if should_trigger_stoploss(trade, current_price):
-                    trade_signal = build_rms_trade_request(trade) #TODO write function to generate trade request with info in trade dict
-                    trading_service.place_order(trade_signal, trade['account']) #TODO place order without creating new successful trade to track
-                    remove_trade(symbol, trade['pseudo_account'])
+                    trade_signal = build_rms_trade_request(trade, current_price)
+                    res = trading_service.place_rms_order(trade_signal)
+                    if res['status']:
+                        remove_trade(symbol, trade['pseudo_account'])
 
-        time.sleep(5)  #TODO Adjust polling interval as needed
-
-def add_trade(symbol, trade_data):
-    if symbol not in open_trades:
-        open_trades[symbol] = []
-    open_trades[symbol].append(trade_data)
-
+            time.sleep(1) # Sleep for 1 second before checking next symbol
 
 def remove_trade(symbol, pseudo_account):
     if symbol in open_trades:
@@ -55,18 +50,25 @@ def should_trigger_stoploss(trade, current_price):
         return current_price <= trade['stoploss_price']
     elif trade['trade_type'] == 'SELL':
         return current_price >= trade['stoploss_price']
-    else:
-        return False  #TODO Handle invalid trade types
 
 
-def build_rms_trade_request(trade):
-    #TODO ... Logic to create a trade signal to counter the original trade
-    counter_trade_type = 'SELL' if trade['trade_type'] == 'BUY' else 'BUY' 
+def build_rms_trade_request(trade, current_price: float):
+    #Logic to create a trade signal to counter the original trade
+    counter_trade_type = 'SELL' if trade['trade_type'] == 'BUY' else 'BUY'
 
-    pass
+    trade_request = TradeRequest(
+        pseudoAccount=trade['pseudo_account'],
+        symbol=trade['symbol'],
+        tradeType=counter_trade_type,
+        orderType=OrderType.market,
+        productType=ProductType.INTRADAY,
+        quantity=trade['quantity'],
+        price=current_price,
+        triggerPrice=0 
+    )
+    return trade_request
 
 def fetch_latest_price(symbol: str):
-   
     token = get_token_from_file(symbol)
 
     if token:
@@ -78,7 +80,7 @@ def fetch_latest_price(symbol: str):
         token = get_symbol_info(symbol)
         #fetch price after getting token and append token to token-symbol file
         tokens_data = get_symbol_token_data()
-        tokens_data.append({symbol:token})
+        tokens_data[symbol] = token
         write_json_file(tokens_data)
 
         price = fetch_price(token)
@@ -90,7 +92,7 @@ def get_symbol_token_data():
     try:
         return read_json_file()
     except FileNotFoundError:
-        return []
+        return {}
     
 def read_json_file():
     with open("symbol_tokens.json", 'r') as file:
@@ -103,16 +105,12 @@ def write_json_file(data):
 def get_token_from_file(symbol):
     """
     Retrieves the token associated with the given symbol from the token data file.
-
     Args:
         symbol (str): The symbol to search for.
-
     Returns:
         str or bool: The token associated with the symbol if found, False otherwise.
     """
     tokens_data = get_symbol_token_data()
-    for entry in tokens_data:
-        if symbol in entry:  
-            return entry[symbol] 
-    return False
+    return tokens_data.get(symbol, False)
    
+monitoring_thread = threading.Thread(target=monitor_stop_losses)
