@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 import asyncio
 import aiohttp
 from typing import Dict
+from rms import add_successful_trade, monitoring_thread
 
 load_dotenv()
 app = FastAPI()
@@ -44,6 +45,11 @@ async def process_trade_signal(signal: TradeSignal):
 
                         results = await asyncio.gather(*tasks)  
                         successful_trades = get_successful_trades(results)
+                        add_successful_trade(signal.symbolname, successful_trades)
+
+                        # Start the monitoring thread if not running
+                        if not monitoring_thread.is_alive():
+                            monitoring_thread.start()
                 return {
                     'status': True,
                     'data': successful_trades
@@ -64,6 +70,11 @@ async def process_trade_signal(signal: TradeSignal):
 
                         results = await asyncio.gather(*tasks)  
                         successful_trades = get_successful_trades(results)
+                        add_successful_trade(signal.symbolname, successful_trades)
+
+                        # Start the monitoring thread if not running
+                        if not monitoring_thread.is_alive():
+                            monitoring_thread.start()
                 return {
                     'status': True,
                     'data': successful_trades
@@ -89,7 +100,7 @@ def build_trade_request(account: Account, signal: TradeSignal, lot_size: int):
         productType=ProductType.INTRADAY,  
         quantity=lot_size,
         price=signal.price,  
-        triggerPrice=0  # You might need conditional logic to set this
+        triggerPrice=0
     )
     return trade_request
 
@@ -121,7 +132,7 @@ def get_successful_trades(results):
     return successful_trades
 
 
-def calculate_stop_loss_price(trade_data : Dict, stoploss_type: str, stoploss_value: float, balance: float):
+def calculate_stop_loss_price(trade_data, stoploss_type: str, stoploss_value: float, balance: float):
     """
     Calculates the stop-loss price based on the user's stop loss preferences and trade type.
 
