@@ -4,7 +4,7 @@ from dotenv import load_dotenv
 from SmartApi import smartConnect
 
 
-user_data = {'status': False}
+user_data = {}
 
 load_dotenv()
 totp_secret = os.getenv("TOTP_SECRET")
@@ -25,9 +25,18 @@ def login_user():
         user_data['status'] = True
         user_data['refreshToken'] = user['data']['refreshToken']
 
+
 def refresh_auth():
-    rtoken = user_data['refreshToken']
-    smartApi.generateToken(rtoken)
+    try:
+        rtoken = user_data['refreshToken']
+        user = smartApi.generateToken(rtoken)
+
+        if user['data']['jwtToken']:
+            return
+    except KeyError:
+        if user["errorcode"] in ["AB8050", "AB8051", "AB1011"]:
+            login_user()
+        
 
 
 def get_symbol_info(symbol):
@@ -39,7 +48,31 @@ def get_symbol_info(symbol):
     if searchScripData['status']:
         symbols = searchScripData['data']
 
-        for symbol in symbols:
-            if symbol['tradingsymbol'] == symbol:
-                return symbol['symboltoken']
+        for sym in symbols:
+            if sym['tradingsymbol'] == symbol:
+                return sym['symboltoken']
             
+    if searchScripData['errorcode'] in ["AG8001", "AG8002", "AG8003"]:
+        refresh_auth()
+        get_symbol_info(symbol)
+
+            
+def fetch_price(token):
+    mode="LTP"
+    exchangeTokens= {
+    "NSE": [
+    token
+    ]
+    }
+    marketData=smartApi.getMarketData(mode, exchangeTokens)
+
+    if marketData['status']:
+        return marketData['data']['fetched'][0]['ltp']
+    
+    elif marketData['errorcode'] in ["AG8001", "AG8002", "AG8003"]:
+        refresh_auth()
+        fetch_price(token)
+
+    else:
+        login_user()
+        fetch_price(token)
