@@ -3,9 +3,8 @@ import os
 from main import get_trading_service
 import time
 import json
-
 from dotenv import load_dotenv
-from utils import user_data
+from utils import get_symbol_info, fetch_price
 
 # load_dotenv()
 # totp_secret = os.getenv("TOTP_SECRET")
@@ -23,6 +22,9 @@ def monitor_stop_losses():
     while True:
         for symbol, trades in open_trades.items():
             current_price = fetch_latest_price(symbol)
+
+            if not current_price: #skip this iteration id getting the price of the symbol fails
+                continue 
 
             for i in range(len(trades) - 1, -1, -1):  # Iterate backwards for removal
                 trade = trades[i]
@@ -68,29 +70,49 @@ def fetch_latest_price(symbol: str):
     token = get_token_from_file(symbol)
 
     if token:
-        price = fetch_price(token)  #TODO implement fetch price
+        price = fetch_price(token)  #implement fetch price
         if price:
             return price
     else:
         #token does not exist so fetch token then get price
         token = get_symbol_info(symbol)
-        #TODO: fetch price after getting token and append token to token-symbol file
+        #fetch price after getting token and append token to token-symbol file
+        tokens_data = get_symbol_token_data()
+        tokens_data.append({symbol:token})
+        write_json_file(tokens_data)
 
-
-def read_json_file(file_path):
-    with open(file_path, 'r') as file:
+        price = fetch_price(token)
+        if price:
+            return price
+    return None
+ 
+def get_symbol_token_data():
+    try:
+        return read_json_file()
+    except FileNotFoundError:
+        return []
+    
+def read_json_file():
+    with open("symbol_tokens.json", 'r') as file:
         return json.load(file)
     
-def write_json_file(file_path, data):
-    with open(file_path, 'w') as file:
+def write_json_file(data):
+    with open("symbol_tokens.json", 'w') as file:
         return json.dump(data, file, indent=4)
  
 def get_token_from_file(symbol):
-    try:
-        tokens_data = read_json_file('symbol_tokens.json')
-        for entry in tokens_data:
-            if symbol in entry:  
-                return entry[symbol] 
-        return False 
-    except FileNotFoundError:
-        return False
+    """
+    Retrieves the token associated with the given symbol from the token data file.
+
+    Args:
+        symbol (str): The symbol to search for.
+
+    Returns:
+        str or bool: The token associated with the symbol if found, False otherwise.
+    """
+    tokens_data = get_symbol_token_data()
+    for entry in tokens_data:
+        if symbol in entry:  
+            return entry[symbol] 
+    return False
+   
