@@ -1,22 +1,37 @@
-
 from typing import List, Dict
-import time
 import json
+import aiofiles
+import asyncio
 from models import TradeRequest, OrderType, ProductType
 from utils import get_symbol_info, fetch_price
-import threading
 
-open_trades = {}  # Dictionary to store open trades
+async def load_trade_data(filename="trades.json"):
+    """Asynchronously loads trade data from the specified JSON file."""
+    try:
+        async with aiofiles.open(filename, 'r') as f:
+            contents = await f.read()
+            return json.loads(contents)
+    except FileNotFoundError:
+        return {}  # If file doesn't exist, start with an empty dictionary
 
-def add_successful_trade(symbol: str, trade_data: List[Dict]):
+async def save_trade_data(trade_data, filename="trades.json"):
+    """Asynchronously saves the trade data dictionary to the specified JSON file."""
+    async with aiofiles.open(filename, 'w') as f:
+        await f.write(json.dumps(trade_data, indent=4)) 
+
+
+def add_successful_trade(open_trades : Dict, symbol: str, trade_data: List[Dict]):
     open_trades[symbol] = open_trades.get(symbol, []) + trade_data
+    asyncio.run(save_trade_data(open_trades))
 
 
-def monitor_stop_losses():
+async def monitor_stop_losses():
     from main import get_trading_service
     trading_service = get_trading_service()
 
     while True:
+        open_trades = await load_trade_data()
+
         if not open_trades:
             break
 
@@ -32,24 +47,26 @@ def monitor_stop_losses():
                     trade_signal = build_rms_trade_request(trade, current_price)
                     res = trading_service.place_rms_order(trade_signal)
                     if res['status']:
-                        remove_trade(symbol, trade['pseudo_account'])
+                        remove_trade(open_trades, symbol, trade['pseudo_account'])
 
-            time.sleep(1) # Sleep for 1 second before checking next symbol
+            asyncio.sleep(1) # Sleep for 1 second before checking next symbol
 
-def remove_trade(symbol, pseudo_account):
+def remove_trade(open_trades, symbol, pseudo_account):
     if symbol in open_trades:
         open_trades[symbol] = [
             trade for trade in open_trades[symbol] if trade['pseudo_account'] != pseudo_account
         ]
         if not open_trades[symbol]:  # Remove the symbol if no trades left
-            del open_trades[symbol]   
+            del open_trades[symbol]
+        asyncio.run(save_trade_data(open_trades))    
 
 
 def should_trigger_stoploss(trade, current_price):
-    if trade['trade_type'] == 'BUY':
-        return current_price <= trade['stoploss_price']
-    elif trade['trade_type'] == 'SELL':
-        return current_price >= trade['stoploss_price']
+    stop_loss = trade['stoploss_price']
+    trade_type = trade['trade_type']
+    if not stop_loss:
+       return False
+    return current_price <= stop_loss if trade_type == 'BUY' else current_price >= stop_loss
 
 
 def build_rms_trade_request(trade, current_price: float):
@@ -113,4 +130,3 @@ def get_token_from_file(symbol):
     tokens_data = get_symbol_token_data()
     return tokens_data.get(symbol, False)
    
-monitoring_thread = threading.Thread(target=monitor_stop_losses)
