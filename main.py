@@ -6,10 +6,12 @@ from dotenv import load_dotenv
 import asyncio
 import aiohttp
 from typing import Dict
-from rms import add_successful_trade, monitoring_thread
+from rms import add_successful_trade, load_trade_data, monitor_stop_losses
 
 load_dotenv()
 app = FastAPI()
+
+global is_monitoring_running
 
 def get_trading_service(): 
     return trading_service.TradingService() 
@@ -31,6 +33,8 @@ async def process_trade_signal(signal: TradeSignal):
 
         if accounts: 
             tasks = []
+            open_trades = await load_trade_data() # Load open trades from file
+            
             if signal.type == TradeType.equity:
                 async with aiohttp.ClientSession() as session:  # Shared session for efficiency
                     for account in accounts:
@@ -45,11 +49,12 @@ async def process_trade_signal(signal: TradeSignal):
 
                         results = await asyncio.gather(*tasks)  
                         successful_trades = get_successful_trades(results)
-                        add_successful_trade(signal.symbolname, successful_trades)
+                        add_successful_trade(open_trades, signal.symbolname, successful_trades)
 
                         # Start the monitoring thread if not running
-                        if not monitoring_thread.is_alive():
-                            monitoring_thread.start()
+                        if not is_monitoring_running:
+                            asyncio.create_task(monitor_stop_losses()) 
+                            is_monitoring_running = True
                 return {
                     'status': True,
                     'data': successful_trades
@@ -70,11 +75,12 @@ async def process_trade_signal(signal: TradeSignal):
 
                         results = await asyncio.gather(*tasks)  
                         successful_trades = get_successful_trades(results)
-                        add_successful_trade(signal.symbolname, successful_trades)
+                        add_successful_trade(open_trades, signal.symbolname, successful_trades)
 
                         # Start the monitoring thread if not running
-                        if not monitoring_thread.is_alive():
-                            monitoring_thread.start()
+                        if not is_monitoring_running:
+                            asyncio.create_task(monitor_stop_losses()) 
+                            is_monitoring_running = True
                 return {
                     'status': True,
                     'data': successful_trades
@@ -147,20 +153,18 @@ def calculate_stop_loss_price(trade_data, stoploss_type: str, stoploss_value: fl
         float: The calculated stop-loss price.
     """
 
+    price = trade_data['price']
+    quantity = trade_data['quantity']
+    trade_type = trade_data['trade_type']
+
     if stoploss_type == 'number':
-        if trade_data['trade_type'] == 'BUY':
-            stop_loss_price = trade_data['price'] - (stoploss_value / trade_data['quantity'])
-        elif trade_data['trade_type'] == 'SELL':
-            stop_loss_price = trade_data['price'] + (stoploss_value / trade_data['quantity'])
+        stop_loss_price = price - (stoploss_value / quantity) if trade_type == 'BUY' else price + (stoploss_value / quantity)  
     elif stoploss_type == 'percentage':
-        max_loss_amount = balance * (stoploss_value / 100)
-        loss_per_share = max_loss_amount / trade_data['quantity']
-        if trade_data['trade_type'] == 'BUY':
-            stop_loss_price = trade_data['price'] - loss_per_share
-        elif trade_data['trade_type'] == 'SELL':
-            stop_loss_price = trade_data['price'] + loss_per_share
+        loss_per_share = (balance * (stoploss_value / 100)) / quantity
+        stop_loss_price = price - loss_per_share if trade_type == 'BUY' else price + loss_per_share
     else:
         return None  # Handle invalid stop loss type
 
     return stop_loss_price
+    
 
