@@ -1,4 +1,5 @@
 from typing import List, Dict
+from logger import logger
 import json
 import aiofiles
 import asyncio
@@ -28,28 +29,30 @@ def add_successful_trade(open_trades : Dict, symbol: str, trade_data: List[Dict]
 async def monitor_stop_losses():
     from main import get_trading_service
     trading_service = get_trading_service()
+    try:
+        while True:
+            open_trades = await load_trade_data()
 
-    while True:
-        open_trades = await load_trade_data()
+            if not open_trades:
+                break
 
-        if not open_trades:
-            break
+            for symbol, trades in open_trades.items():
+                current_price = fetch_latest_price(symbol)
 
-        for symbol, trades in open_trades.items():
-            current_price = fetch_latest_price(symbol)
+                if not current_price: #skip this iteration id getting the price of the symbol fails
+                    continue 
 
-            if not current_price: #skip this iteration id getting the price of the symbol fails
-                continue 
+                for i in range(len(trades) - 1, -1, -1):  # Iterate backwards for removal
+                    trade = trades[i]
+                    if should_trigger_stoploss(trade, current_price):
+                        trade_signal = build_rms_trade_request(trade, current_price)
+                        res = trading_service.place_rms_order(trade_signal)
+                        if res['status']:
+                            remove_trade(open_trades, symbol, trade['pseudo_account'])
 
-            for i in range(len(trades) - 1, -1, -1):  # Iterate backwards for removal
-                trade = trades[i]
-                if should_trigger_stoploss(trade, current_price):
-                    trade_signal = build_rms_trade_request(trade, current_price)
-                    res = trading_service.place_rms_order(trade_signal)
-                    if res['status']:
-                        remove_trade(open_trades, symbol, trade['pseudo_account'])
-
-            asyncio.sleep(1) # Sleep for 1 second before checking next symbol
+                asyncio.sleep(1) # Sleep for 1 second before checking next symbol
+    except Exception as e:
+        logger.exception("An error occurred during stop-loss monitoring:", exc_info=e)
 
 def remove_trade(open_trades, symbol, pseudo_account):
     if symbol in open_trades:
