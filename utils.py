@@ -54,19 +54,25 @@ def get_symbol_info(symbol):
         if not status:
             login_user()
 
+        symbol_token = None
+
         searchScripData = smartApi.searchScrip("NSE", symbol)
 
         if searchScripData.get('status'):  # Safely check 'status'
             symbols = searchScripData.get('data', [])  # Default to an empty list
             for sym in symbols:
                 if sym.get('tradingsymbol') == symbol: 
-                    return sym.get('symboltoken')      
+                    symbol_token = sym.get('symboltoken')      
         if searchScripData.get('errorcode') in ["AG8001", "AG8002", "AG8003"]:
             refresh_auth()
             get_symbol_info(symbol)
         if searchScripData.get("errorcode") in ["AB8050", "AB8051", "AB1011"]: 
             login_user()
             get_symbol_info(symbol)
+
+        if symbol_token:
+            return symbol_token
+        return None
     except Exception as e:
         logger.exception("An error occurred during get_symbol_info:", exc_info=e)
 

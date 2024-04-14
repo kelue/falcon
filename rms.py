@@ -99,13 +99,14 @@ def fetch_latest_price(symbol: str):
         #token does not exist so fetch token then get price
         token = get_symbol_info(symbol)
         #fetch price after getting token and append token to token-symbol file
-        tokens_data = get_symbol_token_data()
-        tokens_data[symbol] = token
-        write_json_file(tokens_data)
+        if token:
+            tokens_data = get_symbol_token_data()
+            tokens_data[symbol] = token
+            write_json_file(tokens_data)
 
-        price = fetch_price(token)
-        if price:
-            return price
+            price = fetch_price(token)
+            if price:
+                return price
     return None
  
 def get_symbol_token_data():
