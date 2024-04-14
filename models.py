@@ -56,6 +56,3 @@ class Account(BaseModel):
     accountId: str
     stoplosstype: str
     stoploss: float
-
-class AccountListResponse(BaseModel):
-    accountslist: List[Account]
