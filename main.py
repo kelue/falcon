@@ -1,12 +1,13 @@
 import os
-from fastapi import FastAPI
+from logger import logger
+from fastapi import FastAPI, HTTPException
 from models import TradeSignal, TradeType, TradeRequest, OrderType, ProductType, Account, TradeSignal
 from services import trading_service, account_service
 from dotenv import load_dotenv
 import asyncio
 import aiohttp
-from typing import Dict
 from rms import add_successful_trade, load_trade_data, monitor_stop_losses
+from utils import get_symbol_info
 
 load_dotenv()
 app = FastAPI()
@@ -90,10 +91,41 @@ async def process_trade_signal(signal: TradeSignal):
                 'status': False,
                 'data': 'No active accounts found'
             }
+    except FileNotFoundError as e:
+        # Handle file not found error
+        raise HTTPException(status_code=404, detail="Trade data file not found")
+
+    except ValueError as e:
+        # Handle invalid data format error
+        raise HTTPException(status_code=400, detail="Invalid trade data format")
+
+    except Exception as e:  # Catch-all for unexpected errors
+        # Log the error with details (see below)
+        logger.exception("An error occured during trade processing:", exc_info=e)
+        raise HTTPException(status_code=500, detail="Internal server error")
+    
+
+@app.get("/health")
+async def health_check():
+    try:
+        check1 = False
+        check2 = False
+        account_service = get_account_service()
+        accounts: list[Account] = account_service.get_active_accounts()
+        if accounts:
+            check1 = True
+        check2 = await get_symbol_info("SBIN-EQ")
+
+        if check1 and check2:
+            return {
+                'status': True,
+                'message': 'Service is healthy'
+        }
     except Exception as e:
+        logger.exception("An error occured during health check:", exc_info=e)
         return {
-            "error": "INTERNAL SERVER ERROR",
-            "message": "server error {}".format(e)
+            'status': False,
+            'message': 'Service is unhealthy'
         }
 
 # Helper functions
