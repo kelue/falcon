@@ -2,6 +2,7 @@ import requests
 import os
 from models import Account
 from logger import logger
+from utils import setting
 class AccountService:
     def __init__(self, api_base_url: str):
         self.api_base_url = api_base_url
@@ -25,7 +26,7 @@ class AccountService:
         
     def get_user_demat(self, id) -> float:
 
-        api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")  
+        api_key = setting().stock_developers_api_key 
         url = "https://api.stocksdeveloper.in/trading/readPlatformMargins"
         headers = {'api-key': api_key}
 

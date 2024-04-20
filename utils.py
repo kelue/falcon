@@ -1,22 +1,20 @@
-import os
 import pyotp
-from dotenv import load_dotenv
 from SmartApi.smartConnect import SmartConnect
 from logger import logger
+from models import Settings
+
+def setting():
+    return Settings()
+
+smartapikey = setting().smart_api_key
+smartApi = SmartConnect(smartapikey)
 
 user_data = {}
 
-load_dotenv()
-totp_secret = os.getenv("TOTP_SECRET")
-smartapiuser = os.getenv("SMARTAPI_USER")
-smartapipass = os.getenv("SMARTAPI_PASS")
-smartapikey = os.getenv("SMARTAPI_KEY")
-
-
-smartApi = SmartConnect(smartapikey)
-
-
 def login_user():
+    smartapiuser = setting().smart_api_user
+    smartapipass = setting().smart_api_pass
+    totp_secret = setting().totp_key
     totp = pyotp.TOTP(totp_secret).now()
 
     user = smartApi.generateSession(smartapiuser, smartapipass, totp)
@@ -48,7 +46,7 @@ def refresh_auth():
         
 
 
-def get_symbol_info(symbol):
+async def get_symbol_info(symbol):
     try:
         status = user_data.get('status', False)
         if not status:

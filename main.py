@@ -1,15 +1,12 @@
-import os
 from logger import logger
 from fastapi import FastAPI, HTTPException
 from models import TradeSignal, TradeType, TradeRequest, OrderType, ProductType, Account, TradeSignal
 from services import trading_service, account_service
-from dotenv import load_dotenv
 import asyncio
 import aiohttp
 from rms import add_successful_trade, load_trade_data, monitor_stop_losses
-from utils import get_symbol_info
+from utils import get_symbol_info, setting
 
-load_dotenv()
 app = FastAPI()
 
 global is_monitoring_running
@@ -18,7 +15,7 @@ def get_trading_service():
     return trading_service.TradingService() 
 
 def get_account_service():
-    url = os.getenv("USERS_URL")
+    url = setting().users_url
     return account_service.AccountService(url)
 
 @app.post("/opentrade")

@@ -1,6 +1,8 @@
 from enum import Enum
 from typing import List
-from pydantic import BaseModel, validator
+from pydantic import BaseModel
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 #sub classes for tradesignal
 #I am not sure these are the only strategy values for the strategyname field will have str for now
@@ -56,3 +58,13 @@ class Account(BaseModel):
     accountId: str
     stoplosstype: str
     stoploss: float
+
+class Settings(BaseSettings):
+    users_url: str
+    smart_api_user: str
+    smart_api_pass:str
+    smart_api_key: str
+    totp_key:str
+    stock_developers_api_key:str
+
+    model_config = SettingsConfigDict(env_file=".env")

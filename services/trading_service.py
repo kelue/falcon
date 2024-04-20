@@ -1,11 +1,8 @@
-import os
-from dotenv import load_dotenv
+from utils import setting
 from models import TradeRequest, Account, TradeSignal
 import requests
 import math
 import aiohttp
-
-load_dotenv()
 
 class TradingService:
     def calculate_lot_size(self, account: Account, signal: TradeSignal):
@@ -51,7 +48,7 @@ class TradingService:
         return lot_size
 
     async def place_order(self, trade_request: TradeRequest, account: Account):
-        api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")  
+        api_key = setting().stock_developers_api_key  
         url = "https://api.stocksdeveloper.in/trading/placeRegularOrder"
         headers = {'api-key': api_key}
 
@@ -95,7 +92,7 @@ class TradingService:
             }
         
     def place_rms_order(self, trade_request: TradeRequest):
-        api_key = os.getenv("STOCKS_DEVELOPER_API_KEY")
+        api_key =setting().stock_developers_api_key
         url = "https://api.stocksdeveloper.in/trading/placeRegularOrder"
         headers = {'api-key': api_key}
 
